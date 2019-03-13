@@ -200,8 +200,39 @@ static DEVICE saved_Device_Table;
 static DEVICE_PROP saved_Device_Property;
 static USER_STANDARD_REQUESTS saved_User_Standard_Requests;
 
-static void (*ep_int_in[7])(void);
-static void (*ep_int_out[7])(void);
+static void* ep_int_in_instanceData[7];
+static void* ep_int_out_instanceData[7];
+
+static void (*ep_int_in[7])(void*);
+static void (*ep_int_out[7])(void*);
+
+#define SPRINGBOARD(direction,number) \
+    static void direction ## _springboard_ ## number(void) { \
+        if (ep_int_ ## direction[number] != NULL) \
+            ep_int_ ## direction[number](ep_int_ ## direction ## _instanceData[number] ); \
+    }    
+    
+SPRINGBOARD(in,0)    
+SPRINGBOARD(in,1)
+SPRINGBOARD(in,2)    
+SPRINGBOARD(in,3)    
+SPRINGBOARD(in,4)    
+SPRINGBOARD(in,5)    
+SPRINGBOARD(in,6)    
+SPRINGBOARD(out,0)    
+SPRINGBOARD(out,1)
+SPRINGBOARD(out,2)    
+SPRINGBOARD(out,3)    
+SPRINGBOARD(out,4)    
+SPRINGBOARD(out,5)    
+SPRINGBOARD(out,6)    
+
+static void (*ep_int_in_springboard[7])(void) = { 
+    in_springboard_0, in_springboard_1, in_springboard_2, in_springboard_3, in_springboard_4,
+    in_springboard_5, in_springboard_6 };
+static void (*ep_int_out_springboard[7])(void) = { 
+    out_springboard_0, out_springboard_1, out_springboard_2, out_springboard_3, out_springboard_4,
+    out_springboard_5, out_springboard_6 };
 
 uint8 usb_generic_set_parts(USBCompositePart** _parts, unsigned _numParts) {
     parts = _parts;
@@ -212,8 +243,8 @@ uint8 usb_generic_set_parts(USBCompositePart** _parts, unsigned _numParts) {
     uint16 pmaOffset = USB_EP0_RX_BUFFER_ADDRESS + USB_EP0_BUFFER_SIZE;
     
     for (unsigned i = 0 ; i < 7 ; i++) {
-        ep_int_in[i] = NOP_Process;
-        ep_int_out[i] = NOP_Process;
+        ep_int_in[i] = NULL;
+        ep_int_out[i] = NULL;
     }
     
     usbDescriptorSize = 0;
@@ -235,17 +266,17 @@ uint8 usb_generic_set_parts(USBCompositePart** _parts, unsigned _numParts) {
             ep[j].pmaAddress = pmaOffset;
             pmaOffset += ep[j].bufferSize;
             ep[j].address = numEndpoints;
-            if (ep[j].callback == NULL)
-                ep[j].callback = NOP_Process;
             if (ep[j].tx) {
                 ep_int_in[numEndpoints - 1] = ep[j].callback;
+                ep_int_in_instanceData[numEndpoints - 1 ] = parts[i]->instanceData;
             }
             else {
                 ep_int_out[numEndpoints - 1] = ep[j].callback;
+                ep_int_out_instanceData[numEndpoints - 1 ] = parts[i]->instanceData;
             }
             numEndpoints++;
         }
-        parts[i]->getPartDescriptor(usbConfig.descriptorData + usbDescriptorSize);
+        parts[i]->getPartDescriptor(parts[i]->instanceData, usbConfig.descriptorData + usbDescriptorSize);
         usbDescriptorSize += parts[i]->descriptorSize;
     }
     
@@ -323,7 +354,7 @@ void usb_generic_enable(void) {
     User_Standard_Requests = my_User_Standard_Requests;
     
     /* Initialize the USB peripheral. */
-    usb_init_usblib(USBLIB, ep_int_in, ep_int_out); 
+    usb_init_usblib(USBLIB, ep_int_in_springboard, ep_int_out_springboard); 
 }
 
 static void usbInit(void) {
@@ -345,7 +376,7 @@ static void usbInit(void) {
 
     for (unsigned i = 0 ; i < numParts ; i++)
         if(parts[i]->usbInit != NULL)
-            parts[i]->usbInit();
+            parts[i]->usbInit(parts[i]->instanceData);
 
     USBLIB->state = USB_UNCONNECTED;
 }
@@ -388,7 +419,7 @@ static void usbReset(void) {
             }
         }
         if (parts[i]->usbReset != NULL)
-            parts[i]->usbReset();
+            parts[i]->usbReset(parts[i]->instanceData);
     }
     
     usbGenericTransmitting = -1;
@@ -430,7 +461,7 @@ static RESULT usbDataSetup(uint8 request) {
 
 	if (CopyRoutine == NULL){
         for (unsigned i = 0 ; i < numParts ; i++) {
-            RESULT r = parts[i]->usbDataSetup(request);
+            RESULT r = parts[i]->usbDataSetup(parts[i]->instanceData,request);
             if (USB_UNSUPPORT != r)
                 return r;
         }
@@ -445,7 +476,7 @@ static RESULT usbDataSetup(uint8 request) {
 
 static RESULT usbNoDataSetup(uint8 request) {
     for (unsigned i = 0 ; i < numParts ; i++) {
-        RESULT r = parts[i]->usbNoDataSetup(request);
+        RESULT r = parts[i]->usbNoDataSetup(parts[i]->instanceData,request);
         if (USB_UNSUPPORT != r)
             return r;
     }
@@ -459,14 +490,14 @@ static void usbSetConfiguration(void) {
     }
     for (unsigned i = 0 ; i < numParts ; i++) {
         if (parts[i]->usbSetConfiguration != NULL)
-            parts[i]->usbSetConfiguration();
+            parts[i]->usbSetConfiguration(parts[i]->instanceData);
     }
 }
 
 static void usbClearFeature(void) {
     for (unsigned i = 0 ; i < numParts ; i++) {
         if (parts[i]->usbClearFeature != NULL)
-            parts[i]->usbClearFeature();
+            parts[i]->usbClearFeature(parts[i]->instanceData);
     }
 }
 

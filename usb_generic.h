@@ -21,7 +21,7 @@ extern const usb_descriptor_string usb_generic_default_iManufacturer;
 extern const usb_descriptor_string usb_generic_default_iProduct;
 
 typedef struct USBEndpointInfo {
-    void (*callback)(void);
+    void (*callback)(void* instanceData);
     uint16 bufferSize;
     uint16 type; // bulk, interrupt, etc.
     uint8 tx; // 1 if TX, 0 if RX
@@ -35,14 +35,15 @@ typedef struct USBCompositePart {
 	uint8 startInterface;
 	uint8 startEndpoint;
     uint16 descriptorSize;
-    void (*getPartDescriptor)(uint8* out);
-    void (*usbInit)(void);
-    void (*usbReset)(void);
-    void (*usbSetConfiguration)(void);
-    void (*usbClearFeature)(void);
-    RESULT (*usbDataSetup)(uint8 request);
-    RESULT (*usbNoDataSetup)(uint8 request);
+    void (*getPartDescriptor)(void* instanceData, uint8* out);
+    void (*usbInit)(void* instanceData);
+    void (*usbReset)(void* instanceData);
+    void (*usbSetConfiguration)(void* instanceData);
+    void (*usbClearFeature)(void* instanceData);
+    RESULT (*usbDataSetup)(void* instanceData, uint8 request);
+    RESULT (*usbNoDataSetup)(void* instanceData, uint8 request);
     USBEndpointInfo* endpoints;
+    void* instanceData;
 } USBCompositePart;
 
 void usb_generic_set_info(uint16 idVendor, uint16 idProduct, const uint8* iManufacturer, const uint8* iProduct, const uint8* iSerialNumber);
