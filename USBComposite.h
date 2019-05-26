@@ -11,6 +11,7 @@
 #include <USBXBox360.h>
 #include <USBMassStorage.h>
 #include <USBMIDI.h>
+//#include <usb_core.h>?
 
 #define USB_MAX_PRODUCT_LENGTH 32
 #define USB_MAX_MANUFACTURER_LENGTH 32
@@ -59,6 +60,44 @@ public:
     }
     bool add(USBCompositePart* part, void* plugin, USBPartInitializer init = NULL, USBPartStopper stop = NULL);
 };
+
+class USBCompositeDevice_ {
+private:
+    USBCompositePart_** parts;
+    unsigned numParts;
+public:
+    bool SetParts(USBCompositePart_** _parts, unsigned _numParts);
+};
+
+typedef void (USBCompositePart_::*USBCompositePartCallback)();
+
+class USBEndpointInfo_ {
+    USBCompositePartCallback callback;
+    uint16_t bufferSize;
+    uint16_t type; // bulk, interrupt, etc.
+    uint8_t tx; // 1 if TX, 0 if RX
+    uint8_t address;    
+    uint16_t pmaAddress;
+}
+
+class USBCompositePart_ {
+public:
+    virtual void init() = 0;
+    virtual void stop() = 0;
+    virtual uint8_t getNumInterfaces() = 0;
+    virtual uint8_t getNumEndpoints() = 0;
+    virtual USBEndpointInfo_* getEndpoints() = 0;
+    virtual uint16_t getDescriptorSize() = 0;
+    virtual uint8_t setStartInterface(uint8_t s) = 0;
+    virtual uint8_t setStartEndpoint(uint8_t s) = 0;
+    virtual void getDescriptor(void* descriptor) = 0;
+    virtual void usbInit() = 0;
+    virtual void usbReset() = 0;
+    virtual void usbSetConfiguration() = 0;
+    virtual void usbClearFeature() = 0;
+    virtual RESULT usbDataSetup(uint8_t request);
+    virtual RESULT usbNoDataSetup(uint8_t request);
+}
 
 extern USBCompositeDevice USBComposite;
 #endif

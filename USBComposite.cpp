@@ -3,6 +3,108 @@
 #define DEFAULT_VENDOR_ID  0x1EAF
 #define DEFAULT_PRODUCT_ID 0x0024
 
+struct USBCompositeCallbackInfo {
+    USBCompositePart_* part;
+    USBCompositePartCallback cb;    
+};
+
+static USBCompositeCallbackInfo cb_in[7] {{NULL}}; 
+static USBCompositeCallbackInfo cb_out[7] {{NULL}};
+
+#define TRAMPOLINE(dir,num) \
+    static void trampoline_ ## dir ## num() { \
+        USBCompositePart_* part = (USBCompositePart_*)cb_ ## dir[ num ].part; \
+        USBCompositePartCallback cb = cb_ ## dir[ num ].cb;\
+        if (part != NULL) (*part.*cb)();\
+    }
+    
+TRAMPOLINE(in,0)
+TRAMPOLINE(in,1)
+TRAMPOLINE(in,2)
+TRAMPOLINE(in,3)
+TRAMPOLINE(in,4)
+TRAMPOLINE(in,5)
+TRAMPOLINE(in,6)
+TRAMPOLINE(out,0)
+TRAMPOLINE(out,1)
+TRAMPOLINE(out,2)
+TRAMPOLINE(out,3)
+TRAMPOLINE(out,4)
+TRAMPOLINE(out,5)
+TRAMPOLINE(out,6)
+
+static void (*ep_int_in[7])(void) = {
+    trampoline_in_0,trampoline_in_1,trampoline_in_2,trampoline_in_3,trampoline_in_4,
+    trampoline_in_5,trampoline_in_6
+};
+
+static void (*ep_int_in[7])(void) = {
+    trampoline_out_0,trampoline_out_1,trampoline_out_2,trampoline_out_3,trampoline_out_4,
+    trampoline_out_5,trampoline_out_6
+};
+
+bool USBCompositeDevice_::SetParts(USBCompositePart_** _parts, unsigned _numParts) {
+    parts = _parts;
+    numParts = _numParts;
+    unsigned numInterfaces = 0;
+    unsigned numEndpoints = 1;
+    uint16 usbDescriptorSize = 0;
+    uint16 pmaOffset = USB_EP0_RX_BUFFER_ADDRESS + USB_EP0_BUFFER_SIZE;
+    
+    for (unsigned i = 0 ; i < 7 ; i++) {
+        ep_int_in[i].part = NULL;
+        ep_int_out[i].part = NULL;
+    }
+    
+    usbDescriptorSize = 0;
+    for (unsigned i = 0 ; i < _numParts ; i++ ) {
+        parts[i]->setStartInterface(numInterfaces);
+        numInterfaces += parts[i]->getNumInterfaces();
+        unsigned partNumEndpoints = parts[i]->getNumEndpoints();
+        if (numEndpoints + partNumEndpoints > 8) {
+            return false;
+		}
+        unsigned partDescriptorSize = parts[i]->getDescriptorSize();
+        if (usbDescriptorSize + partDescriptorSize > MAX_USB_DESCRIPTOR_DATA_SIZE) {
+            return false;
+		}
+        parts[i]->setStartEndpoint(numEndpoints);
+        USBEndpointInfo_* ep = parts[i]->getEndpoints();
+        for (unsigned j = 0 ; j < partNumEndpoints ; j++) {
+            if (ep[j].bufferSize + pmaOffset > PMA_MEMORY_SIZE) { 
+                return false;
+			}
+            ep[j].pmaAddress = pmaOffset;
+            pmaOffset += ep[j].bufferSize;
+            ep[j].address = numEndpoints;
+            if (ep[j].callback == NULL)
+                ep[j].callback = NOP_Process;
+            USBCompositeCallbackInfo* ci = ep[j].tx ? &ep_int_in[numEndpoints - 1] : &ep_int_out[numEndpoints - 1];
+            if (ep[j].callback == NULL) {
+                ci->part = NULL;
+            }
+            else {
+                ci->part = parts[i];
+                ci->cb = ep[j].callback;
+            }
+            numEndpoints++;
+        }
+        parts[i]->getPartDescriptor(usbConfig.descriptorData + usbDescriptorSize);
+        usbDescriptorSize += partDescriptorSize;
+    }
+    
+    usbConfig.Config_Header = Base_Header;    
+    usbConfig.Config_Header.bNumInterfaces = numInterfaces;
+    usbConfig.Config_Header.wTotalLength = usbDescriptorSize + sizeof(Base_Header);
+    Config_Descriptor.Descriptor_Size = usbConfig.Config_Header.wTotalLength;
+    
+    my_Device_Table.Total_Endpoint = numEndpoints;
+        
+    return true;
+}
+
+
+
 static char* putSerialNumber(char* out, int nibbles, uint32 id) {
     for (int i=0; i<nibbles; i++, id >>= 4) {
         uint8 nibble = id & 0xF;
